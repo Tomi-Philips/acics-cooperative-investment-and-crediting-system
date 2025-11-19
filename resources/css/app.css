@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Playwrite+AU+SA:wght@100..400&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');
+
+body {
+    font-family: 'Raleway', sans-serif;
+}
+
+/* Force light mode - override system dark mode preferences */
+:root {
+    color-scheme: light only;
+}
+
+/* Ensure no dark mode styling is applied regardless of system preferences */
+@media (prefers-color-scheme: dark) {
+    :root {
+        color-scheme: light only;
+    }
+
+    body {
+        background-color: #ffffff !important;
+        color: #1f2937 !important;
+    }
+}
+
+/* Override any potential dark class styling */
+.dark,
+html.dark,
+body.dark,
+[data-theme="dark"] {
+    background-color: #ffffff !important;
+    color: #1f2937 !important;
+    color-scheme: light only !important;
+}
+
+/* Ensure all elements stay in light mode */
+.dark *,
+html.dark *,
+body.dark *,
+[data-theme="dark"] * {
+    background-color: inherit !important;
+    color: inherit !important;
+}
+
+.hand-writing-font{
+    font-family: "Playwrite AU SA", cursive;
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-style: normal;
+}
+
+/* Custom scrollbar styles */
+.custom-scroll::-webkit-scrollbar {
+    width: 5px;
+    height: 8px;
+  }
+
+  .custom-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+  }
+
+  .custom-scroll::-webkit-scrollbar-thumb {
+    background: #cbe0cf;
+    border-radius: 10px;
+    transition: background 0.3s ease;
+  }
+
+  .custom-scroll::-webkit-scrollbar-thumb:hover {
+    background: #a0aec0;
+  }
+
+  /* For Firefox */
+  .custom-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f1f1f1;
+  }
