@@ -31,8 +31,8 @@ class DashboardController extends Controller
         $electronicsBalance = FinancialCalculationService::calculateElectronicsBalance($user);
 
         // Additional breakdowns for dashboard visibility
-        $essentialBalance = $user->userCommodities()->where('commodity_name', 'essential')->sum('balance') ?? 0;
-        $nonEssentialBalance = $user->userCommodities()->where('commodity_name', 'non_essential')->sum('balance') ?? 0;
+        $essentialBalance = FinancialCalculationService::calculateEssentialCommodityBalance($user);
+        $nonEssentialBalance = FinancialCalculationService::calculateNonEssentialCommodityBalance($user);
         $entrancePaid = (bool) optional($user->member)->entrance_fee_paid;
 
         // Loan interest paid (all-time) from both LoanPayments and Transactions

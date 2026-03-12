@@ -58,7 +58,7 @@ class MonthlyUpload extends Model
     /**
      * Check if a monthly upload already exists for the given year, month, and type.
      */
-    public static function existsForMonth(int $year, int $month, string $uploadType = 'financial_records'): bool
+    public static function existsForMonth(int $year, int $month, string $uploadType = 'monthly_contributions'): bool
     {
         return self::where('year', $year)
             ->where('month', $month)
@@ -69,11 +69,12 @@ class MonthlyUpload extends Model
     /**
      * Get the latest upload for a specific month and type.
      */
-    public static function getForMonth(int $year, int $month, string $uploadType = 'financial_records'): ?self
+    public static function getForMonth(int $year, int $month, string $uploadType = 'monthly_contributions'): ?self
     {
         return self::where('year', $year)
             ->where('month', $month)
             ->where('upload_type', $uploadType)
+            ->orderBy('id', 'desc')
             ->first();
     }
 
@@ -127,9 +128,8 @@ class MonthlyUpload extends Model
             return false;
         }
 
-        // Only the most recent upload can be reversed
-        $latestUpload = self::orderBy('year', 'desc')
-            ->orderBy('month', 'desc')
+        // Only the most recent upload (by absolute creation order) can be reversed
+        $latestUpload = self::orderBy('id', 'desc')
             ->first();
 
         return $latestUpload && $latestUpload->id === $this->id;

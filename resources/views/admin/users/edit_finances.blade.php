@@ -330,10 +330,10 @@
                             </div>
 
 
-                            <!-- Loan Interest Payment (optional) -->
+                            <!-- Total Loan Interest (Sync target) -->
                             <div>
-                                <label for="loan_interest_payment" class="block mb-1 text-sm font-medium text-gray-700">
-                                    Loan Interest Payment (₦)
+                                <label for="loan_interest_total" class="block mb-1 text-sm font-medium text-gray-700">
+                                    Total Loan Interest (₦)
                                 </label>
                                 <div class="relative">
                                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -341,11 +341,12 @@
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                         </svg>
                                     </div>
-                                    <input type="number" name="loan_interest_payment" id="loan_interest_payment" value="{{ old('loan_interest_payment', 0) }}"
+                                    <input type="number" name="loan_interest_total" id="loan_interest_total" value="{{ old('loan_interest_total', \App\Services\FinancialCalculationService::calculateLoanInterest($user)) }}"
                                            min="0" step="0.01"
-                                           class="pl-10 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-amber-500 focus:border-amber-500 sm:text-sm py-2.5 @error('loan_interest_payment') border-red-300 @enderror">
+                                           class="pl-10 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-amber-500 focus:border-amber-500 sm:text-sm py-2.5 @error('loan_interest_total') border-red-300 @enderror">
                                 </div>
-                                @error('loan_interest_payment')
+                                <p class="mt-1 text-xs text-gray-500">Edit this value to change the total interest owed. The system will auto-calculate the adjustment.</p>
+                                @error('loan_interest_total')
                                     <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>

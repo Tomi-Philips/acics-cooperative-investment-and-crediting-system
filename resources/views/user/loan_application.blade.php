@@ -281,7 +281,7 @@
                     <div>
                         <p class="text-sm font-semibold tracking-wide text-gray-500 uppercase">Eligible Amount</p>
                         <p class="text-lg font-bold text-gray-800">₦{{ number_format($maxLoanAmount, 2) }}</p>
-                        <p class="mt-1 text-xs text-gray-500">2×(Savings+Shares-Loan-Commodity-Non essential-Electronics)</p>
+                        <p class="mt-1 text-xs text-gray-500">2×(Savings+Shares) - (Loan+Commodity+Non essential+Electronics)</p>
                     </div>
                 </div>
             </div>

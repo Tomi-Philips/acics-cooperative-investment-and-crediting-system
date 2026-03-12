@@ -146,8 +146,8 @@ class LoanController extends Controller
         ]);
 
         // Calculate interest and total amount (fixed 10% of principal)
-        $interestRate = 0.10; // 10%
-        $interestAmount = $validated['amount'] * $interestRate;
+        $interestRate = 10.0; // 10%
+        $interestAmount = $validated['amount'] * ($interestRate / 100);
         $totalPayment = $validated['amount'] + $interestAmount;
         $monthlyPayment = 0; // No term; monthly schedule not used
 

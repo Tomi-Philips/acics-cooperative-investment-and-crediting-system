@@ -56,9 +56,13 @@ class FinancialCalculationService
 
         foreach ($activeLoans as $loan) {
             // Calculate remaining principal for this loan
+            // Include both regular repayments and adjustments (which can be negative)
             $principalPayments = $loan->payments()
                 ->where('status', 'paid')
-                ->where('notes', 'LIKE', '%Principal Repayment%')
+                ->where(function($query) {
+                    $query->where('notes', 'LIKE', '%Principal Repayment%')
+                          ->orWhere('notes', 'LIKE', '%Principal Balance Adjustment%');
+                })
                 ->sum('amount');
 
             $remainingPrincipal = $loan->amount - $principalPayments;
@@ -70,34 +74,40 @@ class FinancialCalculationService
 
     /**
      * Calculate user's total loan interest owed.
-     * This should be: (Principal × 10%) - Interest Payments Made
+     *
+     * Uses the stored loan_interest transactions as the authoritative source
+     * (values come from bulk upload spreadsheet or manual transactions),
+     * then subtracts any interest already paid via loan_payments.
      *
      * @param User $user
      * @return float
      */
     public static function calculateLoanInterest(User $user): float
     {
-        $totalInterestOwed = 0;
-        $activeLoans = $user->loans()->whereIn('status', ['active', 'approved'])->get();
+        // Sum all loan_interest transactions recorded for this user.
+        // These are created during bulk upload (from the spreadsheet column)
+        // or via manual transactions — they represent the actual interest balance.
+        $loanInterestRecorded = $user->transactions()
+            ->where('type', 'loan_interest')
+            ->where('status', 'completed')
+            ->sum('amount');
 
-        foreach ($activeLoans as $loan) {
-            // Calculate interest on original principal using stored rate
-            $storedRate = $loan->interest_rate ?? 0.10; // Default to 10% if not set
-            // Handle both decimal (0.10) and percentage (10.0) formats
-            $interestRate = $storedRate > 1 ? $storedRate / 100 : $storedRate;
-            $interestDue = $loan->amount * $interestRate;
+        // Subtract any interest already paid via loan_payments
+        // (manual "Interest Payment" entries processed by the admin)
+        $interestPaidViaPayments = \App\Models\LoanPayment::where(function($q) use ($user) {
+                $q->where('user_id', $user->id)
+                  ->orWhereIn('loan_id', $user->loans()->pluck('id'));
+            })
+            ->where('status', 'paid')
+            ->where(function ($query) {
+                $query->where('notes', 'LIKE', '%Interest Payment%')
+                      ->orWhere('notes', 'LIKE', '%Interest Balance Adjustment%');
+            })
+            ->sum('amount');
 
-            // Calculate interest payments made
-            $interestPayments = $loan->payments()
-                ->where('status', 'paid')
-                ->where('notes', 'LIKE', '%Interest Payment%')
-                ->sum('amount');
+        $remainingInterest = $loanInterestRecorded - $interestPaidViaPayments;
 
-            $remainingInterest = $interestDue - $interestPayments;
-            $totalInterestOwed += max(0, $remainingInterest); // Don't allow negative
-        }
-
-        return $totalInterestOwed;
+        return max(0, $remainingInterest); // Don't allow negative
     }
 
     /**
@@ -119,18 +129,16 @@ class FinancialCalculationService
      */
     public static function calculateElectronicsBalance(User $user): float
     {
-        // Electronics balance is calculated from commodity transactions with type 'electronics'
-        $credits = $user->commodityTransactions()
-            ->where('commodity_type', 'electronics')
-            ->where('type', 'credit')
+        // Electronics balance is calculated from Electronics model
+        $purchases = $user->electronics()
+            ->where('transaction_type', 'purchase')
             ->sum('amount');
 
-        $debits = $user->commodityTransactions()
-            ->where('commodity_type', 'electronics')
-            ->where('type', 'debit')
+        $repayments = $user->electronics()
+            ->where('transaction_type', 'repayment')
             ->sum('amount');
 
-        return $credits - $debits;
+        return $purchases - $repayments;
     }
 
     /**
@@ -190,15 +198,12 @@ class FinancialCalculationService
         $electronics = self::calculateElectronicsBalance($user);
 
         $assets = $savings + $shares;
-        // Updated business rule: 2×(Savings+Shares-Loan-Commodity-Non essential-Electronics)
-        // Where Commodity = Essential Commodity and Non essential = Non-Essential Commodity
         $liabilities = $loans + $essentialCommodity + $nonEssentialCommodity + $electronics;
 
-        // Calculate net assets (assets - liabilities)
-        $netAssets = max(0, $assets - $liabilities);
+        // NEW Formula: 2×(Savings+Shares) - (Loan+Commodity+Non-essential+Electronics)
+        $maxLoan = ($multiplier * $assets) - $liabilities;
 
-        // Return actual calculated amount (can be 0 if no net assets)
-        return $multiplier * $netAssets;
+        return max(0, $maxLoan);
     }
 
     /**

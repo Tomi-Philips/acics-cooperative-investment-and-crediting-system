@@ -81,9 +81,10 @@ class ProfileController extends Controller
             $profilePhotoPath = $request->file('profile_photo')->store('profile_photos', 'public');
 
             // Update member profile photo
-            $user->member()->update([
-                'profile_photo' => $profilePhotoPath
-            ]);
+            $user->member()->updateOrCreate(
+                ['user_id' => $user->id],
+                ['profile_photo' => $profilePhotoPath]
+            );
         }
 
         // Update user name
@@ -92,10 +93,13 @@ class ProfileController extends Controller
         ]);
 
         // Update member information
-        $user->member()->update([
-            'phone' => $validated['phone'],
-            'address' => $validated['address']
-        ]);
+        $user->member()->updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'phone' => $validated['phone'],
+                'address' => $validated['address']
+            ]
+        );
 
         return redirect()->route('user.profile')
             ->with('success', 'Profile information updated successfully.');
@@ -120,12 +124,15 @@ class ProfileController extends Controller
         ]);
 
         // Update next of kin information
-        $user->member()->update([
-            'next_of_kin_name' => $validated['next_of_kin_name'],
-            'next_of_kin_relationship' => $validated['next_of_kin_relationship'],
-            'next_of_kin_phone' => $validated['next_of_kin_phone'],
-            'next_of_kin_address' => $validated['next_of_kin_address']
-        ]);
+        $user->member()->updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'next_of_kin_name' => $validated['next_of_kin_name'],
+                'next_of_kin_relationship' => $validated['next_of_kin_relationship'],
+                'next_of_kin_phone' => $validated['next_of_kin_phone'],
+                'next_of_kin_address' => $validated['next_of_kin_address']
+            ]
+        );
 
         return redirect()->route('user.profile')
             ->with('success', 'Next of kin information updated successfully.');
@@ -237,7 +244,9 @@ class ProfileController extends Controller
         $data['loans'] = [
             'active_loan' => $activeLoan,
             'remaining_balance' => $activeLoan ? $activeLoan->remaining_balance : 0,
-            'loan_payments' => \App\Models\LoanPayment::where('user_id', $user->id)
+            'loan_payments' => \App\Models\LoanPayment::whereHas('loan', function($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
                 ->orderBy('created_at', 'desc')
                 ->limit(5)
                 ->get(),
@@ -274,8 +283,7 @@ class ProfileController extends Controller
         ];
 
         // 7. Electronics Transactions
-        $electronicsBalance = \App\Models\Electronics::where('user_id', $user->id)
-            ->sum('amount');
+        $electronicsBalance = \App\Services\FinancialCalculationService::calculateElectronicsBalance($user);
 
         $data['electronics'] = [
             'balance' => $electronicsBalance,
@@ -286,10 +294,14 @@ class ProfileController extends Controller
         ];
 
         // 8. Loan Interest Payments from both LoanPayments and Transactions
-        $loanInterestFromPayments = \App\Models\LoanPayment::where('user_id', $user->id)
+        // Query via relationship to be safe if user_id is missing on loan_payments table
+        $loanInterestFromPayments = \App\Models\LoanPayment::whereHas('loan', function($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
             ->where('status', 'paid')
             ->where(function($q) {
-                $q->where('notes', 'like', '%interest%');
+                $q->where('notes', 'like', '%interest%')
+                  ->orWhere('notes', 'like', '%Interest%');
             })
             ->sum('amount');
 
@@ -301,10 +313,13 @@ class ProfileController extends Controller
         $loanInterestPaid = $loanInterestFromPayments + $loanInterestFromTransactions;
 
         // Get combined transactions for display
-        $loanPaymentTransactions = \App\Models\LoanPayment::where('user_id', $user->id)
+        $loanPaymentTransactions = \App\Models\LoanPayment::whereHas('loan', function($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
             ->where('status', 'paid')
             ->where(function($q) {
-                $q->where('notes', 'like', '%interest%');
+                $q->where('notes', 'like', '%interest%')
+                  ->orWhere('notes', 'like', '%Interest%');
             })
             ->orderBy('created_at', 'desc')
             ->limit(3)
@@ -383,7 +398,9 @@ class ProfileController extends Controller
         });
 
         // Get loan payments
-        $loanPayments = $user->loanPayments()->get()->map(function($payment) {
+        $loanPayments = \App\Models\LoanPayment::whereHas('loan', function($q) use ($user) {
+            $q->where('user_id', $user->id);
+        })->get()->map(function($payment) {
             return (object)[
                 'id' => $payment->id,
                 'type' => 'loan_payment',

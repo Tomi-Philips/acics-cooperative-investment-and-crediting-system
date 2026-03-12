@@ -71,7 +71,7 @@
                             Savings ({{ $savingTransactions->count() }})
                         </button>
                         <button onclick="showTab('loans')" id="loans-tab" class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-3 border-b-2 font-medium text-sm flex-shrink-0">
-                            Loans ({{ $loanPayments->count() }})
+                            Loan Repayments ({{ $loanPayments->count() }})
                         </button>
                         <button onclick="showTab('commodities')" id="commodities-tab" class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-2 px-3 border-b-2 font-medium text-sm flex-shrink-0">
                             Commodities ({{ $commodityTransactions->count() }})
@@ -165,7 +165,7 @@
         </div>
 
         {{-- Share Transactions --}}
-        <div id="shares-content" class="tab-content">
+        <div id="shares-content" class="tab-content hidden">
             <div class="p-6 bg-white rounded-lg shadow-md">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-gray-800">Shares</h3>
@@ -322,11 +322,11 @@
         <div id="loans-content" class="tab-content hidden">
             <div class="p-6 bg-white rounded-lg shadow-md">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-800">Loans</h3>
+                    <h3 class="text-lg font-semibold text-gray-800">Loan Repayments</h3>
                     @if($loanPayments->count() > 0)
                         <div class="flex items-center space-x-2">
                             <div class="relative">
-                                <input type="text" id="loans-search" placeholder="Search loan payments..."
+                                <input type="text" id="loans-search" placeholder="Search loan repayments..."
                                     class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm">
                                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                     <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -349,7 +349,7 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member No.</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan ID</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Method</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repayment Type</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                 </tr>
                             </thead>
@@ -368,8 +368,8 @@
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-label="amount" data-amount="{{ $payment->amount }}">
                                             ₦{{ number_format($payment->amount, 2) }}
                                         </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-label="payment_method">
-                                            {{ ucfirst($payment->payment_method) }}
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-label="repayment_type">
+                                            Principal Repayment
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-label="date" data-date="{{ $payment->payment_date->format('Y-m-d') }}">
                                             {{ $payment->payment_date->format('M j, Y') }}
@@ -389,7 +389,7 @@
                         </div>
                     </div>
                 @else
-                    <p class="text-gray-500">No loans found for this upload.</p>
+                    <p class="text-gray-500">No loan repayments found for this upload.</p>
                 @endif
             </div>
         </div>
@@ -566,7 +566,7 @@
         <div id="loaninterest-content" class="tab-content hidden">
             <div class="p-6 bg-white rounded-lg shadow-md">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-800">Loan Interest</h3>
+                    <h3 class="text-lg font-semibold text-gray-800">Loan Interest Payments</h3>
                     @if($loanInterestTransactions->count() > 0)
                         <div class="flex items-center space-x-2">
                             <div class="relative">

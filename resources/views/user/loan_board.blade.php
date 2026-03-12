@@ -77,7 +77,7 @@
                                 <div class="text-xs text-gray-500">{{ $loan->purpose }}</div>
                             </td>
                             <td class="px-6 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">₦{{ number_format($loan->amount, 2) }}</td>
-                            <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{{ $loan->interest_rate > 1 ? $loan->interest_rate : $loan->interest_rate * 100 }}%</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{{ $loan->interest_rate }}%</td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 @if($loan->status === 'active')
                                 <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>

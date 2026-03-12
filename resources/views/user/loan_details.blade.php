@@ -83,7 +83,7 @@
                                 </div>
                                 <div>
                                     <p class="text-sm font-semibold tracking-wide text-gray-500 uppercase">Interest Rate</p>
-                                    <p class="text-2xl font-bold text-gray-800">{{ $loan->interest_rate * 100 }}%</p>
+                                    <p class="text-2xl font-bold text-gray-800">{{ $loan->interest_rate }}%</p>
                                 </div>
                             </div>
                         </div>

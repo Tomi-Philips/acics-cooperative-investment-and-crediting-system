@@ -238,6 +238,18 @@ class LoanController extends Controller
                     'group_id' => $transactionGroup->id,
                 ]);
 
+                // Create transaction record for loan interest (10%)
+                \App\Models\Transaction::create([
+                    'user_id' => $loan->user_id,
+                    'type' => 'loan_interest',
+                    'amount' => $interestAmount,
+                    'description' => "Loan Interest (10%) - {$loan->loan_number}",
+                    'reference' => 'LOAN-INT-' . date('Ymd') . '-' . str_pad($loan->user_id, 4, '0', STR_PAD_LEFT) . '-' . $loan->id,
+                    'status' => 'completed',
+                    'transaction_date' => now(),
+                    'group_id' => $transactionGroup->id,
+                ]);
+
                 // Complete the transaction group
                 $transactionGroup->update([
                     'total_amount' => $loan->amount,
@@ -313,6 +325,21 @@ class LoanController extends Controller
                 'amount' => $loan->amount,
                 'description' => "Loan disbursement - {$loan->loan_number}",
                 'reference' => 'LOAN-DISB-' . date('Ymd') . '-' . str_pad($loan->user_id, 4, '0', STR_PAD_LEFT) . '-' . $loan->id,
+                'status' => 'completed',
+                'transaction_date' => now(),
+                'group_id' => $transactionGroup->id,
+            ]);
+
+            // Create transaction record for loan interest (10%)
+            $interestRate = $loan->interest_rate > 1 ? $loan->interest_rate / 100 : $loan->interest_rate;
+            $interestAmount = $loan->amount * $interestRate;
+
+            \App\Models\Transaction::create([
+                'user_id' => $loan->user_id,
+                'type' => 'loan_interest',
+                'amount' => $interestAmount,
+                'description' => "Loan Interest (10%) - {$loan->loan_number}",
+                'reference' => 'LOAN-INT-' . date('Ymd') . '-' . str_pad($loan->user_id, 4, '0', STR_PAD_LEFT) . '-' . $loan->id,
                 'status' => 'completed',
                 'transaction_date' => now(),
                 'group_id' => $transactionGroup->id,

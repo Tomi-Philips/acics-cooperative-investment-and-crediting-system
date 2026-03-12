@@ -26,7 +26,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                         </svg>
                     </div>
-                    My Profile
+                    My Profile (Updated)
                 </h1>
                 <p class="mt-2 text-sm text-gray-600">Your personal information and membership details</p>
             </div>
@@ -52,7 +52,7 @@
                             @endif
                         </div>
                         <div class="mt-2 text-center">
-                            <button type="button" data-modal-target="profile-photo-modal" class="text-sm text-blue-600 hover:text-blue-800">Change Photo</button>
+                            <button type="button" data-modal-target="edit-profile-modal" data-modal-toggle="edit-profile-modal" class="text-sm text-blue-600 hover:text-blue-800">Change Photo</button>
                         </div>
                     </div>
 
@@ -85,7 +85,7 @@
                     </div>
                 </div>
                 <div class="flex justify-end mt-4">
-                    <button type="button" data-modal-target="edit-profile-modal" class="px-4 py-2 text-sm text-white transition-colors rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
+                    <button type="button" data-modal-target="edit-profile-modal" data-modal-toggle="edit-profile-modal" class="px-4 py-2 text-sm text-white transition-colors rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
                         Edit Personal Information
                     </button>
                 </div>
@@ -180,7 +180,7 @@
                     </div>
                 </div>
                 <div class="flex justify-end mt-4">
-                    <button type="button" data-modal-target="next-of-kin-modal" class="px-4 py-2 text-sm text-white transition-colors rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
+                    <button type="button" data-modal-target="next-of-kin-modal" data-modal-toggle="next-of-kin-modal" class="px-4 py-2 text-sm text-white transition-colors rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
                         Edit Next of Kin
                     </button>
                 </div>
@@ -444,7 +444,7 @@
                 @else
                     <div class="px-6 py-12 text-center">
                         <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2 2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <h3 class="mt-2 text-sm font-medium text-gray-900">No transactions found</h3>
                         <p class="mt-1 text-sm text-gray-500">Your transaction history will appear here.</p>
@@ -468,6 +468,105 @@
                 </svg>
                 Contact Support
             </a>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Profile Modal -->
+<div id="edit-profile-modal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 hidden overflow-y-auto overflow-x-hidden">
+    <div class="relative w-full h-full max-w-md p-4 md:h-auto">
+        <!-- Modal content -->
+        <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+            <!-- Modal header -->
+            <div class="flex items-center justify-between p-4 border-b rounded-t md:p-5 dark:border-gray-600">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    Edit Personal Information
+                </h3>
+                <button type="button" class="inline-flex items-center justify-center w-8 h-8 text-sm text-gray-400 bg-transparent rounded-lg hover:bg-gray-200 hover:text-gray-900 ms-auto dark:hover:bg-gray-600 dark:hover:text-white" data-modal-hide="edit-profile-modal">
+                    <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                    </svg>
+                    <span class="sr-only">Close modal</span>
+                </button>
+            </div>
+            <!-- Modal body -->
+            <form action="{{ route('user.profile.update') }}" method="POST" enctype="multipart/form-data" class="p-4 md:p-5">
+                @csrf
+                <div class="grid gap-4 mb-4 grid-cols-2">
+                    <div class="col-span-2">
+                        <label for="name" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Full Name</label>
+                        <input type="text" name="name" id="name" value="{{ old('name', $user->name) }}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter your full name" required>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                        <label for="phone" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Phone Number</label>
+                        <input type="text" name="phone" id="phone" value="{{ old('phone', $user->member ? $user->member->phone : '') }}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter phone number" required>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                        <label for="address" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Address</label>
+                        <input type="text" name="address" id="address" value="{{ old('address', $user->member ? $user->member->address : '') }}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter address" required>
+                    </div>
+                    <div class="col-span-2">
+                        <label for="profile_photo" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Profile Photo</label>
+                        <input type="file" name="profile_photo" id="profile_photo" accept="image/*" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500">
+                        <p class="mt-1 text-sm text-gray-500">Optional. Max file size: 2MB. Accepted formats: JPEG, PNG, JPG</p>
+                    </div>
+                </div>
+                <button type="submit" class="text-white inline-flex items-center bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                    <svg class="w-4 h-4 me-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 112 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    Update Profile
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Next of Kin Modal -->
+<div id="next-of-kin-modal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 hidden overflow-y-auto overflow-x-hidden">
+    <div class="relative w-full h-full max-w-md p-4 md:h-auto">
+        <!-- Modal content -->
+        <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+            <!-- Modal header -->
+            <div class="flex items-center justify-between p-4 border-b rounded-t md:p-5 dark:border-gray-600">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    Edit Next of Kin Information
+                </h3>
+                <button type="button" class="inline-flex items-center justify-center w-8 h-8 text-sm text-gray-400 bg-transparent rounded-lg hover:bg-gray-200 hover:text-gray-900 ms-auto dark:hover:bg-gray-600 dark:hover:text-white" data-modal-hide="next-of-kin-modal">
+                    <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                    </svg>
+                    <span class="sr-only">Close modal</span>
+                </button>
+            </div>
+            <!-- Modal body -->
+            <form action="{{ route('user.profile.update_next_of_kin') }}" method="POST" class="p-4 md:p-5">
+                @csrf
+                <div class="grid gap-4 mb-4 grid-cols-2">
+                    <div class="col-span-2">
+                        <label for="next_of_kin_name" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Full Name</label>
+                        <input type="text" name="next_of_kin_name" id="next_of_kin_name" value="{{ old('next_of_kin_name', $user->member ? $user->member->next_of_kin_name : '') }}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter next of kin full name" required>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                        <label for="next_of_kin_relationship" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Relationship</label>
+                        <input type="text" name="next_of_kin_relationship" id="next_of_kin_relationship" value="{{ old('next_of_kin_relationship', $user->member ? $user->member->next_of_kin_relationship : '') }}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="e.g., Spouse, Parent, Sibling" required>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1">
+                        <label for="next_of_kin_phone" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Phone Number</label>
+                        <input type="text" name="next_of_kin_phone" id="next_of_kin_phone" value="{{ old('next_of_kin_phone', $user->member ? $user->member->next_of_kin_phone : '') }}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter phone number" required>
+                    </div>
+                    <div class="col-span-2">
+                        <label for="next_of_kin_address" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Address</label>
+                        <input type="text" name="next_of_kin_address" id="next_of_kin_address" value="{{ old('next_of_kin_address', $user->member ? $user->member->next_of_kin_address : '') }}" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter address" required>
+                    </div>
+                </div>
+                <button type="submit" class="text-white inline-flex items-center bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+                    <svg class="w-4 h-4 me-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 112 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    Update Next of Kin
+                </button>
+            </form>
         </div>
     </div>
 </div>

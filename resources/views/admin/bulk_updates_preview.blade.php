@@ -123,6 +123,10 @@
                                 COOPNO</th>
                             <th class="px-3 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                                 NAME</th>
+                            @if (in_array('entrance', $updateFields))
+                                <th class="px-3 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                                    ENTRANCE</th>
+                            @endif
                             @if (in_array('shares', $updateFields))
                                 <th class="px-3 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                                     SHARES</th>
@@ -167,6 +171,10 @@
                                 <td
                                     class="px-3 py-4 whitespace-nowrap text-sm {{ $row['status'] === 'valid' ? 'text-gray-900' : 'text-red-500' }}">
                                     {{ $row['name'] }}</td>
+                                @if (in_array('entrance', $updateFields))
+                                    <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">
+                                        {{ $row['entrance'] ?? '-' }}</td>
+                                @endif
                                 @if (in_array('shares', $updateFields))
                                     <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">
                                         {{ $row['shares'] ?? '-' }}</td>

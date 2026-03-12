@@ -239,15 +239,13 @@ class Member extends Model
             ->where('commodity_name', 'non_essential')
             ->sum('balance');
 
-        // Updated business rule: 2×(Savings+Shares-Loan-Commodity-Non essential-Electronics)
-        // Where Commodity = Essential Commodity and Non essential = Non-Essential Commodity
+        $assets = $this->total_savings + $this->total_shares;
         $liabilities = $this->total_loan_balance + $essentialCommodity + $nonEssentialCommodity + $this->total_electronics_balance;
 
-        // Calculate net assets (assets - liabilities)
-        $netAssets = max(0, $assets - $liabilities);
+        // NEW Formula: 2×(Savings+Shares) - (Loan + Commodity + Non-essential + Electronics)
+        $maxLoan = ($multiplier * $assets) - $liabilities;
 
-        // Return actual calculated amount (can be 0 if no net assets)
-        return $multiplier * $netAssets;
+        return max(0, $maxLoan);
     }
 
     /**

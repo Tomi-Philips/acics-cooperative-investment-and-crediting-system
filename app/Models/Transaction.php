@@ -22,6 +22,7 @@ class Transaction extends Model
         'reference',
         'status',
         'group_id',
+        'transaction_date',
     ];
 
     /**

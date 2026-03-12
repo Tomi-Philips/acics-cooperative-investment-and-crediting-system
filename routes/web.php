@@ -173,6 +173,7 @@ Route::prefix('admin')->as('admin.')->middleware(['auth'])->group(function () {
         Route::get('/users/bulk-upload/details/{id}', 'viewBulkUploadDetails')->name('users.bulk_upload_details');
         Route::get('/users/download-template', 'downloadTemplate')->name('users.download_template');
         Route::get('/users/export-financial-data', 'exportFinancialData')->name('users.export_financial_data');
+        Route::get('/users/export-members-data', 'exportMembersData')->name('users.export_members_data');
     });
 
     // Manual Transactions (temporarily without CSRF for testing)

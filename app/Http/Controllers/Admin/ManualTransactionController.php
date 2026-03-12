@@ -441,27 +441,6 @@ class ManualTransactionController extends Controller
                 }
                 break;
 
-            case 'loan_disbursement':
-                // Only allow disbursement (addition) for loan_disbursement
-                if ($operation !== 'addition') {
-                    throw ValidationException::withMessages(['operation' => 'Invalid operation for loan disbursement.']);
-                }
-                // Validate loan eligibility for new loan disbursement
-                if (!$user->member) {
-                    throw ValidationException::withMessages(['user_id' => 'User is not a member.']);
-                }
-
-                $eligibility = $user->member->isEligibleForLoan(true);
-                if (!$eligibility['eligible']) {
-                    throw ValidationException::withMessages(['user_id' => 'Member is not eligible for a loan: ' . $eligibility['reason']]);
-                }
-
-                $maxLoanAmount = $user->member->getMaxLoanAmountAttribute();
-                if ($amount > $maxLoanAmount) {
-                    throw ValidationException::withMessages(['amount' => 'Amount exceeds maximum loan eligibility: ₦' . number_format($maxLoanAmount, 2)]);
-                }
-                break;
-
             case 'loan_interest':
                 // Only interest payments (subtraction) are allowed
                 if ($operation !== 'subtraction') {
@@ -498,26 +477,16 @@ class ManualTransactionController extends Controller
                 break;
 
             case 'loan_disbursement':
-                // Same validation as loan_repay addition operation
+                // Only allow disbursement (addition) for loan_disbursement
+                if ($operation !== 'addition') {
+                    throw ValidationException::withMessages(['operation' => 'Invalid operation for loan disbursement.']);
+                }
+
                 if (!$user->member) {
                     throw ValidationException::withMessages(['user_id' => 'User is not a member.']);
                 }
-
-                $eligibility = $user->member->isEligibleForLoan(true);
-                if (!$eligibility['eligible']) {
-                    throw ValidationException::withMessages(['user_id' => 'Member is not eligible for a loan: ' . $eligibility['reason']]);
-                }
-
-                $maxLoanAmount = $user->member->getMaxLoanAmountAttribute();
-                if ($amount > $maxLoanAmount) {
-                    throw ValidationException::withMessages(['amount' => 'Amount exceeds maximum loan eligibility: ₦' . number_format($maxLoanAmount, 2)]);
-                }
-
-                // Check if amount exceeds eligible loan amount
-                // The maxLoanAmount already represents the available amount for new loans
-                if ($amount > $maxLoanAmount) {
-                    throw ValidationException::withMessages(['amount' => 'Amount exceeds eligible loan amount. Available: ₦' . number_format($maxLoanAmount, 2)]);
-                }
+                
+                // Eligibility and max amount checks removed as requested - Admin manages manually
                 break;
         }
     }
@@ -676,11 +645,31 @@ class ManualTransactionController extends Controller
 
             // No payment schedule needed - flexible repayment within 24 months
 
-            // Update group totals for loan disbursement
-            $transactionGroup->increment('total_amount', $amount);
-            $transactionGroup->increment('total_records', 1);
+            // Create a transaction record for tracking in recent transactions
+            \App\Models\Transaction::create([
+                'user_id' => $user->id,
+                'type' => 'loan_disbursement',
+                'amount' => $amount,
+                'description' => $description,
+                'reference' => 'MAN-LOAN-' . date('YmdHis') . '-' . str_pad($user->id, 4, '0', STR_PAD_LEFT),
+                'status' => 'completed',
+                'transaction_date' => now(),
+                'group_id' => $transactionGroup->id,
+            ]);
 
-            return ['message' => "Loan of ₦" . number_format($amount, 2) . " disbursed successfully. Loan Number: {$loan->loan_number}. Flexible repayment within 24 months."];
+            // Create a transaction record for the interest
+            \App\Models\Transaction::create([
+                'user_id' => $user->id,
+                'type' => 'loan_interest',
+                'amount' => $interestAmount,
+                'description' => "Interest for loan {$loan->loan_number} (10%)",
+                'reference' => 'MAN-INT-' . date('YmdHis') . '-' . str_pad($user->id, 4, '0', STR_PAD_LEFT),
+                'status' => 'completed',
+                'transaction_date' => now(),
+                'group_id' => $transactionGroup->id,
+            ]);
+
+            return ['message' => "Loan of ₦" . number_format($amount, 2) . " disbursed successfully with ₦" . number_format($interestAmount, 2) . " interest. Loan Number: {$loan->loan_number}. Flexible repayment within 24 months."];
         } else {
             // Loan repayment with cascading logic (oldest loans first)
             return $this->processCascadingLoanRepayment($user, $amount, $description, $transactionGroup);
@@ -810,11 +799,23 @@ class ManualTransactionController extends Controller
             'group_id' => $transactionGroup->id,
         ]);
 
+        // Create a transaction record for the interest
+        \App\Models\Transaction::create([
+            'user_id' => $user->id,
+            'type' => 'loan_interest',
+            'amount' => $interestAmount,
+            'description' => "Interest for loan {$loan->loan_number} (10%)",
+            'reference' => 'MAN-INT-' . date('YmdHis') . '-' . str_pad($user->id, 4, '0', STR_PAD_LEFT),
+            'status' => 'completed',
+            'transaction_date' => now(),
+            'group_id' => $transactionGroup->id,
+        ]);
+
         // Update group totals
         $transactionGroup->increment('total_amount', $amount);
         $transactionGroup->increment('total_records', 1);
 
-        return ['message' => "Loan of ₦" . number_format($amount, 2) . " disbursed successfully. Loan Number: {$loan->loan_number}. Flexible repayment within 24 months."];
+        return ['message' => "Loan of ₦" . number_format($amount, 2) . " disbursed successfully with ₦" . number_format($interestAmount, 2) . " interest. Loan Number: {$loan->loan_number}. Flexible repayment within 24 months."];
     }
 
     /**
@@ -1345,11 +1346,19 @@ class ManualTransactionController extends Controller
             'Content-Disposition' => 'attachment; filename="manual_transaction_template.xlsx"',
         ];
 
-        // Create template data
+        // Create template data - approximately 10 sample records
         $templateData = [
             ['Member Number', 'Amount', 'Description'],
             ['MB001', '1000.00', 'Sample transaction description'],
             ['MB002', '2500.50', 'Another sample transaction'],
+            ['MB003', '750.25', 'Monthly contribution payment'],
+            ['MB004', '1500.00', 'Loan repayment installment'],
+            ['MB005', '500.50', 'Share purchase'],
+            ['MB006', '2000.00', 'Savings deposit'],
+            ['MB007', '300.75', 'Interest payment'],
+            ['MB008', '1200.00', 'Commodity purchase'],
+            ['MB009', '850.25', 'Electronics installment'],
+            ['MB010', '600.00', 'Miscellaneous fee'],
             ['', '', 'Add more rows as needed...'],
         ];
 

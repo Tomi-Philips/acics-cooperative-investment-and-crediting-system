@@ -213,12 +213,17 @@
                                     </label>
                                     <input type="text" id="description" name="description"
                                         class="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-20 transition-all duration-200"
-                                        placeholder="e.g., June MAB" value="June MAB">
-                                    <p class="flex items-center mt-1 text-xs text-gray-600">
-                                        <svg class="w-3 h-3 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                        </svg>
-                                        Will appear in transaction history
+                                        placeholder="e.g., Monthly Contributions Update">
+                                    <p class="flex flex-col mt-1 text-xs text-amber-700">
+                                        <span class="flex">
+                                            <svg class="w-3 h-3 mr-1 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                            <strong>Important:</strong>
+                                        </span>
+                                        <span>
+                                            This description will be used as the label for this bulk operation in transaction history and reports. Choose a clear, descriptive name.
+                                        </span> 
                                     </p>
                                 </div>
                             </div>
@@ -286,6 +291,10 @@
                             <div class="mb-4">
                                 <label class="block mb-1 text-sm font-medium text-gray-700">Fields to Update</label>
                                 <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                    <label class="inline-flex items-center">
+                                        <input type="checkbox" name="update_fields[]" value="entrance" class="text-green-600 border-gray-300 rounded shadow-sm focus:border-green-500 focus:ring focus:ring-green-500 focus:ring-opacity-50" checked>
+                                        <span class="ml-2 text-sm text-gray-700">Entrance Fee</span>
+                                    </label>
                                     <label class="inline-flex items-center">
                                         <input type="checkbox" name="update_fields[]" value="shares" class="text-green-600 border-gray-300 rounded shadow-sm focus:border-green-500 focus:ring focus:ring-green-500 focus:ring-opacity-50" checked>
                                         <span class="ml-2 text-sm text-gray-700">Shares</span>
@@ -520,7 +529,7 @@
                                                     @endphp
 
                                                     @if($isLatestUpload)
-                                                        <button onclick="console.log('Button clicked!'); showReversalModal({{ $upload->id }}, {{ json_encode($upload->formatted_date) }}, {{ $upload->processed_records }}); return false;"
+                                                        <button onclick="showReversalModal({{ $upload->id }}, {{ json_encode($upload->formatted_date) }}, {{ $upload->processed_records }}); return false;"
                                                                 class="reversal-button inline-flex items-center px-3 py-1 text-xs font-medium text-red-700 rounded-md transition-all duration-200"
                                                                 type="button">
                                                             <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -583,6 +592,56 @@
     </div>
 </div>
 
+{{-- Reversal Confirmation Modal --}}
+<div id="reversalModal" tabindex="-1" aria-hidden="true" class="hidden overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative p-4 w-full max-w-md max-h-full">
+        <!-- Modal content -->
+        <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 border border-red-200">
+            <!-- Modal header -->
+            <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+                    <svg class="w-6 h-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    Reverse Upload
+                </h3>
+                <button type="button" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white" onclick="hideReversalModal()">
+                    <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                    </svg>
+                    <span class="sr-only">Close modal</span>
+                </button>
+            </div>
+            <!-- Modal body -->
+            <form id="reversalForm" method="POST" class="p-4 md:p-5">
+                @csrf
+                @method('DELETE')
+                <div class="mb-4 bg-red-50 p-3 rounded-lg border border-red-100">
+                    <p class="text-sm text-red-800">
+                        <strong>Warning:</strong> This will undo all financial updates processed for <span id="reversalMonthText" class="font-bold underline"></span>. This action is permanent.
+                    </p>
+                    <p class="mt-2 text-xs text-red-600">
+                        Affected records: <span id="reversalCountText" class="font-bold"></span>
+                    </p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="reversal_reason" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Reason for Reversal</label>
+                    <textarea id="reversal_reason" name="reversal_reason" rows="3" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-red-500 focus:border-red-500 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" placeholder="Provide a reason for reversing this upload (minimum 10 characters)..." required></textarea>
+                </div>
+                
+                <div class="flex items-center space-x-3">
+                    <button type="submit" class="text-white bg-red-600 hover:bg-red-700 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-800">
+                        Yes, Reverse Upload
+                    </button>
+                    <button type="button" class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700" onclick="hideReversalModal()">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 @push('scripts')
 <script>
@@ -625,6 +684,39 @@
         // Initialize state on load
         updateState();
     });
+
+    function showReversalModal(uploadId, monthName, recordCount) {
+        const modalEl = document.getElementById('reversalModal');
+        if (!modalEl) return;
+        
+        // Set content
+        const form = document.getElementById('reversalForm');
+        form.action = `/admin/bulk-updates/${uploadId}/reverse`;
+        
+        document.getElementById('reversalMonthText').textContent = monthName;
+        document.getElementById('reversalCountText').textContent = recordCount;
+        
+        // Clear reason
+        document.getElementById('reversal_reason').value = '';
+        
+        // Use project's native showModal function
+        if (window.showModal) {
+            window.showModal(modalEl);
+        } else {
+            modalEl.classList.remove('hidden');
+        }
+    }
+
+    function hideReversalModal() {
+        const modalEl = document.getElementById('reversalModal');
+        if (!modalEl) return;
+
+        if (window.hideModal) {
+            window.hideModal(modalEl);
+        } else {
+            modalEl.classList.add('hidden');
+        }
+    }
 </script>
 @endpush
 

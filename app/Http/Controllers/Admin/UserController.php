@@ -634,29 +634,12 @@ class UserController extends Controller
         $electronicsBalance = FinancialCalculationService::calculateElectronicsBalance($user);
 
         // Additional breakdowns
-        $essentialBalance = $user->userCommodities()->where('commodity_name', 'essential')->sum('balance') ?? 0;
-        $nonEssentialBalance = $user->userCommodities()->where('commodity_name', 'non_essential')->sum('balance') ?? 0;
+        $essentialBalance = FinancialCalculationService::calculateEssentialCommodityBalance($user);
+        $nonEssentialBalance = FinancialCalculationService::calculateNonEssentialCommodityBalance($user);
         $entrancePaid = (bool) optional($user->member)->entrance_fee_paid;
 
-        // Get electronics balance
-        if ($user->electronics()->exists()) {
-            $electronicsBalance = $user->electronics->sum('amount');
-        }
-
-        // Calculate total loan interest paid from both LoanPayments and Transactions
-        $loanInterestFromPayments = $user->loanPayments()
-            ->where('status', 'paid')
-            ->where(function($q) {
-                $q->where('notes', 'like', '%interest%');
-            })
-            ->sum('amount');
-
-        $loanInterestFromTransactions = $user->transactions()
-            ->where('type', 'loan_interest')
-            ->where('status', 'completed')
-            ->sum('amount');
-
-        $loanInterestPaid = $loanInterestFromPayments + $loanInterestFromTransactions;
+        // Calculate remaining loan interest owed (consistent with user dashboard)
+        $loanInterestOwed = FinancialCalculationService::calculateLoanInterest($user);
 
         // Get recent transactions from all sources
         $recentTransactions = collect();
@@ -702,6 +685,28 @@ class UserController extends Controller
                     'type_class' => $transaction->type === 'credit' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800',
                     'charges' => 0,
                     'net_amount' => $transaction->amount
+                ];
+            });
+
+        // Get loan disbursements
+        $loanDisbursements = $user->loans()
+            ->orderBy('created_at', 'desc')
+            ->take(10)
+            ->get()
+            ->map(function($loan) {
+                return (object)[
+                    'id' => $loan->id,
+                    'type' => 'loan_disbursement',
+                    'amount' => $loan->amount,
+                    'description' => 'Loan Disbursement',
+                    'created_at' => $loan->created_at,
+                    'date' => $loan->created_at->format('M d, Y'),
+                    'amount_formatted' => '₦' . number_format($loan->amount, 2),
+                    'amount_class' => 'text-red-600',
+                    'status' => $loan->status,
+                    'type_class' => 'bg-red-100 text-red-800',
+                    'charges' => 0,
+                    'net_amount' => $loan->amount
                 ];
             });
 
@@ -774,13 +779,14 @@ class UserController extends Controller
         // Separate transactions by type for different tabs
         $savingsTransactions = $savingTransactions->sortByDesc('created_at')->take(10);
         $sharesTransactions = $shareTransactions->sortByDesc('created_at')->take(10);
-        $loansTransactions = $loanPayments->sortByDesc('created_at')->take(10);
+        $loansTransactions = $loanDisbursements->merge($loanPayments)->sortByDesc('created_at')->take(10);
         $commoditiesTransactions = $commodityTransactions->sortByDesc('created_at')->take(10);
 
         // Merge all for general recent transactions (backward compatibility)
         $recentTransactions = $recentTransactions
             ->merge($shareTransactions)
             ->merge($savingTransactions)
+            ->merge($loanDisbursements)
             ->merge($loanPayments)
             ->merge($regularTransactions)
             ->merge($commodityTransactions)
@@ -797,7 +803,7 @@ class UserController extends Controller
             'essentialBalance' => $essentialBalance,
             'nonEssentialBalance' => $nonEssentialBalance,
             'entrancePaid' => $entrancePaid,
-            'loanInterestPaid' => $loanInterestPaid,
+            'loanInterestOwed' => $loanInterestOwed,
             'recentTransactions' => $recentTransactions,
             'savingsTransactions' => $savingsTransactions,
             'sharesTransactions' => $sharesTransactions,
@@ -977,55 +983,97 @@ class UserController extends Controller
                 $user->member->update(['total_saving_amount' => $newSavings]);
             }
 
+            // Common active loan reference for balance/interest adjustments
+            $activeLoan = Loan::where('user_id', $user->id)
+                ->whereIn('status', ['active', 'approved'])
+                ->latest()
+                ->first();
+
             // Update Loan Balance - Use transaction-based current balance
             $currentLoan = FinancialCalculationService::calculateLoanBalance($user);
-            $newLoan = $request->loan_balance;
-            $activeLoan = Loan::where('user_id', $user->id)->where('status', 'active')->first();
+            $newLoan = (float) $request->loan_balance;
 
             if ($currentLoan != $newLoan) {
-                if ($activeLoan && $newLoan == 0) {
-                    // Close existing loan
-                    $activeLoan->update([
-                        'remaining_balance' => 0,
-                        'status' => 'completed',
-                        'completed_at' => $adjustmentDate
-                    ]);
+                // Get all active/approved loans to handle cases where multiple exist (data inconsistency)
+                $activeLoans = Loan::where('user_id', $user->id)
+                    ->whereIn('status', ['active', 'approved'])
+                    ->orderBy('created_at', 'asc') // Start with oldest
+                    ->get();
 
-                    LoanPayment::create([
-                        'loan_id' => $activeLoan->id,
-                        'amount' => $currentLoan,
-                        'payment_date' => $adjustmentDate,
-                        'due_date' => $adjustmentDate, // Add required due_date field
-                        'notes' => "Manual adjustment by admin: {$reason}",
-                        'status' => 'paid',
-                        'group_id' => $transactionGroup->id,
-                    ]);
-                } elseif ($activeLoan) {
-                    // Update existing loan
+                if ($activeLoans->count() > 0) {
                     $difference = $currentLoan - $newLoan;
-                    if ($difference != 0) {
-                        LoanPayment::create([
-                            'loan_id' => $activeLoan->id,
-                            'amount' => abs($difference),
-                            'payment_date' => $adjustmentDate,
-                            'due_date' => $adjustmentDate, // Add required due_date field
-                            'notes' => "Manual adjustment by admin: {$reason}",
-                            'status' => 'paid',
-                            'group_id' => $transactionGroup->id,
-                        ]);
+                    
+                    if ($difference > 0) {
+                        // DECREASE balance: Apply repayments across active loans until target reached
+                        $toReduce = abs($difference);
+                        foreach ($activeLoans as $loan) {
+                            if ($toReduce <= 0) break;
+                            
+                            // Calculate this specific loan's contribution to current total
+                            $curPrincipalPayments = $loan->payments()
+                                ->where('status', 'paid')
+                                ->where(function($query) {
+                                    $query->where('notes', 'LIKE', '%Principal Repayment%')
+                                          ->orWhere('notes', 'LIKE', '%Principal Balance Adjustment%');
+                                })
+                                ->sum('amount');
+                            $curLoanBal = max(0, $loan->amount - $curPrincipalPayments);
+                            
+                            $reduction = min($toReduce, $curLoanBal);
+                            if ($reduction > 0) {
+                                LoanPayment::create([
+                                    'loan_id' => $loan->id,
+                                    'amount' => $reduction,
+                                    'payment_date' => $adjustmentDate,
+                                    'due_date' => $adjustmentDate,
+                                    'notes' => "Principal Repayment (Manual Adjustment: {$reason})",
+                                    'status' => 'paid',
+                                    'group_id' => $transactionGroup->id,
+                                ]);
+                                
+                                $toReduce -= $reduction;
+                                
+                                // Sync remaining_balance column and close if 0
+                                $remaining = max(0, $curLoanBal - $reduction);
+                                $loan->update([
+                                    'remaining_balance' => $remaining,
+                                    'status' => $remaining <= 0 ? 'completed' : $loan->status,
+                                    'completed_at' => $remaining <= 0 ? $adjustmentDate : $loan->completed_at
+                                ]);
+                            }
+                        }
+                        
+                        // Only add an overflow record if there's still a reduction needed but loans were exhausted
+                        if ($toReduce > 0) {
+                             $latest = $activeLoans->last();
+                             LoanPayment::create([
+                                'loan_id' => $latest->id,
+                                'amount' => $toReduce,
+                                'payment_date' => $adjustmentDate,
+                                'due_date' => $adjustmentDate,
+                                'notes' => "Principal Repayment (Manual Adjustment Overflow: {$reason})",
+                                'status' => 'paid',
+                                'group_id' => $transactionGroup->id,
+                            ]);
+                            $latest->update(['remaining_balance' => 0, 'status' => 'completed', 'completed_at' => $adjustmentDate]);
+                        }
+                    } elseif ($difference < 0) {
+                        // INCREASE balance: Adjust the latest active loan upwards
+                        // Using the common $activeLoan reference defined above
+                        $activeLoan->increment('amount', abs($difference));
+                        $activeLoan->update(['remaining_balance' => $activeLoan->remaining_balance + abs($difference)]);
                     }
-                    $activeLoan->update(['remaining_balance' => $newLoan]);
                 } elseif ($newLoan > 0) {
-                    // Create new loan
+                    // Create new loan if none exists
                     Loan::create([
                         'user_id' => $user->id,
                         'loan_number' => 'MANUAL-' . time(),
                         'amount' => $newLoan,
                         'remaining_balance' => $newLoan,
-                        'interest_rate' => 0,
-                        'term_months' => 12,
-                        'monthly_payment' => $newLoan / 12,
-                        'total_payment' => $newLoan,
+                        'interest_rate' => 10,
+                        'term_months' => 0,
+                        'monthly_payment' => 0,
+                        'total_payment' => $newLoan * 1.1,
                         'status' => 'active',
                         'approved_at' => $adjustmentDate,
                         'disbursed_at' => $adjustmentDate,
@@ -1034,23 +1082,55 @@ class UserController extends Controller
                 }
             }
 
-            // Optional direct loan interest payment separate from balance target
-            $interestPay = (float) ($request->loan_interest_payment ?? 0);
+            // Handle Interest Balance Adjustment
+            $currentInterest = FinancialCalculationService::calculateLoanInterest($user);
+            $newInterest = (float) ($request->loan_interest_total ?? $currentInterest);
 
-            if ($interestPay > 0 && !$activeLoan) {
-                throw new \Exception('No active loan found to apply interest payment.');
-            }
-
-            if ($activeLoan && $interestPay > 0) {
-                LoanPayment::create([
-                    'loan_id' => $activeLoan->id,
-                    'amount' => $interestPay,
-                    'payment_date' => $adjustmentDate,
-                    'due_date' => $adjustmentDate,
-                    'notes' => "Manual interest payment by admin: {$reason}",
-                    'status' => 'paid',
-                    'group_id' => $transactionGroup->id,
-                ]);
+            if ($currentInterest != $newInterest) {
+                $diffInterest = $newInterest - $currentInterest;
+                
+                if ($diffInterest > 0) {
+                    // Add debt
+                    Transaction::create([
+                        'user_id' => $user->id,
+                        'type' => 'loan_interest',
+                        'amount' => abs($diffInterest),
+                        'description' => "Interest Balance Adjustment (Manual Adjustment: {$reason})",
+                        'reference' => 'INT-ADJ-' . time(),
+                        'status' => 'completed',
+                        'transaction_date' => $adjustmentDate,
+                        'group_id' => $transactionGroup->id,
+                    ]);
+                } else {
+                    // Record payment to reduce balance
+                    // LoanPayment REQUIRES a loan_id, so we find the most recent one if no active one
+                    $targetLoanId = $activeLoan ? $activeLoan->id : Loan::where('user_id', $user->id)->latest()->value('id');
+                    
+                    if ($targetLoanId) {
+                        LoanPayment::create([
+                            'user_id' => $user->id,
+                            'loan_id' => $targetLoanId,
+                            'amount' => abs($diffInterest),
+                            'payment_date' => $adjustmentDate,
+                            'due_date' => $adjustmentDate,
+                            'notes' => "Interest Payment (Manual Adjustment: {$reason})",
+                            'status' => 'paid',
+                            'group_id' => $transactionGroup->id,
+                        ]);
+                    } else {
+                        // If no loan ever existed, we create a negative interest transaction to reduce balance
+                        Transaction::create([
+                            'user_id' => $user->id,
+                            'type' => 'loan_interest',
+                            'amount' => -abs($diffInterest),
+                            'description' => "Interest Balance Reduction (Manual Adjustment: {$reason})",
+                            'reference' => 'INT-ADJ-NEG-' . time(),
+                            'status' => 'completed',
+                            'transaction_date' => $adjustmentDate,
+                            'group_id' => $transactionGroup->id,
+                        ]);
+                    }
+                }
             }
 
             // Update Essential Commodity - Use transaction-based current balance
@@ -1135,40 +1215,32 @@ class UserController extends Controller
 
             // Update Electronics Balance - Use transaction-based current balance
             $electronicsBalance = FinancialCalculationService::calculateElectronicsBalance($user);
-            $newElectronics = $request->electronics_balance;
+            $newElectronics = (float) $request->electronics_balance;
 
             if ($electronicsBalance != $newElectronics) {
                 $difference = $newElectronics - $electronicsBalance;
-                $type = $difference > 0 ? 'credit' : 'debit';
-
-                // Create electronics transaction (using commodity transaction with electronics type)
-                CommodityTransaction::create([
+                
+                // If new > current, create a purchase record (increase debt)
+                // If new < current, create a repayment record (decrease debt)
+                \App\Models\Electronics::create([
                     'user_id' => $user->id,
-                    'commodity_type' => 'electronics',
                     'amount' => abs($difference),
-                    'type' => $type,
-                    'description' => "Manual adjustment by admin: {$reason}",
-                    'transaction_date' => $adjustmentDate,
-                    'group_id' => $transactionGroup->id,
+                    'transaction_type' => $difference > 0 ? 'purchase' : 'repayment',
+                    'description' => "Electronics Balance Adjustment (Manual: {$reason})",
+                    'processed_by' => Auth::id(),
+                    // Note: If you have a group_id or transaction_date col in electronics table, you should add it here.
+                    // Checking existing columns in Electronics model view: user_id, amount, transaction_type, payment_method, reference_number, description, processed_by
                 ]);
 
                 // Also log a general transaction so it appears in the user's recent transactions
                 \App\Models\Transaction::create([
                     'user_id' => $user->id,
-                    'type' => $type === 'debit' ? 'electronics_repayment' : 'electronics',
+                    'type' => $difference > 0 ? 'electronics' : 'electronics_repayment',
                     'amount' => abs($difference),
-                    'description' => "Electronics adjustment by admin: {$reason}",
-                    'reference' => 'ADJ-ELX-' . date('Ymd') . '-' . str_pad($user->id, 4, '0', STR_PAD_LEFT),
+                    'description' => "Electronics balance adjustment by admin: {$reason}",
+                    'reference' => 'ADJ-ELX-' . time(),
                     'status' => 'completed',
                     'group_id' => $transactionGroup->id,
-                ]);
-
-                // Update or create electronics commodity record
-                UserCommodity::updateOrCreate([
-                    'user_id' => $user->id,
-                    'commodity_name' => 'electronics'
-                ], [
-                    'balance' => $newElectronics
                 ]);
             }
 
@@ -1592,6 +1664,7 @@ class UserController extends Controller
                                 'status' => 'active',
                                 'joined_at' => $userData['joined_at'],
                                 'entrance_fee_paid' => $userData['entrance_fee_paid'], // Fix: Include entrance fee status
+                                'total_electronics_amount' => 0,
                             ]);
 
                             // Create financial transactions using the new transaction-based system
@@ -1959,7 +2032,9 @@ class UserController extends Controller
     }
 
     /**
-     * Get department ID from department name (optional - returns null if not found or empty)
+     * Get department ID from department name or code (optional - returns null if not found or empty)
+     * Matches against both title (partial) and code (exact, case-insensitive).
+     * Does NOT filter by is_active so all departments in the system are always findable.
      */
     private function getDepartmentId($departmentName)
     {
@@ -1968,11 +2043,16 @@ class UserController extends Controller
             return null;
         }
 
-        $department = Department::where('title', 'like', '%' . trim($departmentName) . '%')
-            ->where('is_active', true)
+        $search = trim($departmentName);
+
+        // Search by code (exact, case-insensitive) first, then by title (partial match)
+        $department = Department::where(function ($q) use ($search) {
+                $q->whereRaw('LOWER(code) = ?', [strtolower($search)])
+                  ->orWhere('title', 'LIKE', '%' . $search . '%');
+            })
             ->first();
 
-        // Return null if department not found - this will be handled gracefully
+        // Return null if department not found - will be handled gracefully
         return $department ? $department->id : null;
     }
 
@@ -2108,8 +2188,14 @@ class UserController extends Controller
 
             // Department validation - OPTIONAL: Only validate if department is explicitly provided
             if (!empty($userData['department']) && trim($userData['department']) !== '') {
-                $department = Department::where('title', 'LIKE', '%' . trim($userData['department']) . '%')
-                    ->where('is_active', true)
+                $search = trim($userData['department']);
+
+                // Match by code (exact, case-insensitive) OR title (partial match)
+                // Do NOT filter by is_active — all system departments should be findable
+                $department = Department::where(function ($q) use ($search) {
+                        $q->whereRaw('LOWER(code) = ?', [strtolower($search)])
+                          ->orWhere('title', 'LIKE', '%' . $search . '%');
+                    })
                     ->first();
 
                 // Only flag as error if department is provided but doesn't match any existing department
@@ -2117,7 +2203,7 @@ class UserController extends Controller
                     $validationIssues['not_found'][] = [
                         'row' => $rowNumber,
                         'name' => $userData['name'],
-                        'department' => trim($userData['department']),
+                        'department' => $search,
                         'member_number' => $userData['member_number']
                     ];
                     $hasIssues = true;
@@ -2498,27 +2584,27 @@ class UserController extends Controller
                 'John Doe',
                 'john.doe@example.com',
                 'P/SS/001',
-                'Computer Science',
-                '2024-01-15',
+                '',
+                '1/15/2024',
                 'Yes',
-                '50000',  // Current loan balance (not principal + interest)
-                '5000',   // Interest payments made separately
-                '10000',  // Share amount
-                '25000',  // Saving amount
-                '15000',  // Essential commodity balance
-                '8000',   // Non-essential commodity balance
-                '5000'    // Electronics balance
+                '50000',
+                '5000',
+                '10000',
+                '25000',
+                '15000',
+                '8000',
+                '5000'
             ],
             [
                 'Jane Smith',
                 'jane.smith@example.com',
                 'P/SS/002',
-                'Business Administration',
-                '2024-02-20',
+                '',
+                '2/20/2024',
                 'No',
-                '75000',  // Current loan balance
+                '75000',
                 '7500',
-                '5000',
+                '10000',
                 '15000',
                 '8000',
                 '5000',
@@ -2528,16 +2614,121 @@ class UserController extends Controller
                 'Mike Johnson',
                 'mike.johnson@example.com',
                 'P/SS/003',
-                '', // Empty department example - shows this is optional
-                '2024-03-10',
+                '',
+                '3/10/2024',
                 'Yes',
                 '100000',
                 '10000',
-                '15000',
+                '10000',
                 '30000',
                 '20000',
                 '12000',
                 '7500'
+            ],
+            [
+                'Sarah Wilson',
+                'sarah.wilson@example.com',
+                'P/SS/004',
+                '',
+                '4/5/2024',
+                'Yes',
+                '60000',
+                '6000',
+                '5000',
+                '20000',
+                '12000',
+                '6000',
+                '4000'
+            ],
+            [
+                'David Brown',
+                'david.brown@example.com',
+                'P/SS/005',
+                '',
+                '5/12/2024',
+                'No',
+                '80000',
+                '8000',
+                '5000',
+                '28000',
+                '18000',
+                '9000',
+                '6000'
+            ],
+            [
+                'Lisa Davis',
+                'lisa.davis@example.com',
+                'P/SS/006',
+                '',
+                '6/18/2024',
+                'Yes',
+                '45000',
+                '4500',
+                '10000',
+                '18000',
+                '10000',
+                '5000',
+                '3500'
+            ],
+            [
+                'Robert Miller',
+                'robert.miller@example.com',
+                'P/SS/007',
+                '',
+                '7/22/2024',
+                'Yes',
+                '55000',
+                '5500',
+                '10000',
+                '22000',
+                '14000',
+                '7000',
+                '4500'
+            ],
+            [
+                'Emily Garcia',
+                'emily.garcia@example.com',
+                'P/SS/008',
+                '',
+                '8/30/2024',
+                'No',
+                '30000',
+                '3000',
+                '10000',
+                '12000',
+                '8000',
+                '4000',
+                '2500'
+            ],
+            [
+                'James Rodriguez',
+                'james.rodriguez@example.com',
+                'P/SS/009',
+                '',
+                '9/14/2024',
+                'Yes',
+                '70000',
+                '7000',
+                '10000',
+                '26000',
+                '16000',
+                '8000',
+                '5500'
+            ],
+            [
+                'Maria Lopez',
+                'maria.lopez@example.com',
+                'P/SS/010',
+                '',
+                '10/8/2024',
+                'Yes',
+                '65000',
+                '6500',
+                '10000',
+                '24000',
+                '17000',
+                '8500',
+                '5000'
             ]
         ];
 
@@ -2754,6 +2945,100 @@ class UserController extends Controller
 
             return redirect()->route('admin.users.all')
                 ->with('error', 'Failed to export financial data: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Export all members data with specific columns to CSV
+     */
+    public function exportMembersData()
+    {
+        try {
+            // Get all users with member data - simplified query
+            $users = User::where('role', 'member')
+                ->orderBy('name')
+                ->get();
+
+            // Prepare data for export
+            $exportData = [];
+            $exportData[] = [
+                'COOPNO',
+                'Name',
+                'Entrance Fee',
+                'Share',
+                'Saving',
+                'Loan',
+                'Interest',
+                'Electronics',
+                'Essential',
+                'Non-Essential'
+            ];
+
+            foreach ($users as $user) {
+                // Safely calculate financial balances with fallbacks
+                $savingsBalance = 0;
+                $sharesBalance = 0;
+                $loanInterest = 0;
+                $loanAmount = 0;
+                $essentialCommodityBalance = 0;
+                $nonEssentialCommodityBalance = 0;
+                $electronicsBalance = 0;
+
+                try { $savingsBalance = FinancialCalculationService::calculateSavingsBalance($user); } catch (\Exception $e) { /* ignore */ }
+                try { $sharesBalance = FinancialCalculationService::calculateSharesBalance($user); } catch (\Exception $e) { /* ignore */ }
+                try { $loanInterest = FinancialCalculationService::calculateLoanInterest($user); } catch (\Exception $e) { /* ignore */ }
+                try { $loanAmount = FinancialCalculationService::calculateLoanBalance($user); } catch (\Exception $e) { /* ignore */ }
+                try { $essentialCommodityBalance = FinancialCalculationService::calculateEssentialCommodityBalance($user); } catch (\Exception $e) { /* ignore */ }
+                try { $nonEssentialCommodityBalance = FinancialCalculationService::calculateNonEssentialCommodityBalance($user); } catch (\Exception $e) { /* ignore */ }
+                try { $electronicsBalance = FinancialCalculationService::calculateElectronicsBalance($user); } catch (\Exception $e) { /* ignore */ }
+
+                // Get entrance fee status
+                $entranceFee = 'No';
+                if ($user->member && $user->member->entrance_fee_paid) {
+                    $entranceFee = 'Yes';
+                }
+
+                $exportData[] = [
+                    $user->member ? $user->member->member_number : 'N/A',
+                    $user->name,
+                    $entranceFee,
+                    number_format($sharesBalance, 2),
+                    number_format($savingsBalance, 2),
+                    number_format($loanAmount, 2),
+                    number_format($loanInterest, 2),
+                    number_format($electronicsBalance, 2),
+                    number_format($essentialCommodityBalance, 2),
+                    number_format($nonEssentialCommodityBalance, 2)
+                ];
+            }
+
+            // Create CSV content
+            $csvContent = '';
+            foreach ($exportData as $row) {
+                $csvContent .= implode(',', array_map(function($field) {
+                    // Escape fields containing commas or quotes
+                    if (strpos($field, ',') !== false || strpos($field, '"') !== false) {
+                        return '"' . str_replace('"', '""', $field) . '"';
+                    }
+                    return $field;
+                }, $row)) . "\n";
+            }
+
+            // Return CSV file
+            return response($csvContent, 200, [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="members_data_' . date('Y-m-d_H-i-s') . '.csv"',
+            ]);
+
+        } catch (\Exception $e) {
+            // Return basic CSV if everything fails
+            $csvContent = "COOPNO,Name,Entrance Fee,Share,Saving,Loan,Interest,Electronics,Essential,Non-Essential\n";
+            $csvContent .= "ERROR,Error occurred,Please contact admin,,,,,,,,,\n";
+
+            return response($csvContent, 200, [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="members_data_' . date('Y-m-d_H-i-s') . '.csv"',
+            ]);
         }
     }
 }

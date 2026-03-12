@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
 
 class DepartmentController extends Controller
 {
@@ -91,15 +92,11 @@ class DepartmentController extends Controller
     {
         // Validate the uploaded file
         $request->validate([
-            'department_csv_file' => 'required|file|mimes:csv,txt',
+            'department_csv_file' => 'required|file|mimes:csv,xlsx,xls,txt|max:2048',
         ]);
 
         // Get the uploaded file
         $file = $request->file('department_csv_file');
-
-        // Store the file temporarily
-        $path = $file->store('temp');
-        $fullPath = \Illuminate\Support\Facades\Storage::path($path);
 
         $successCount = 0;
         $errorCount = 0;
@@ -109,13 +106,16 @@ class DepartmentController extends Controller
         \Illuminate\Support\Facades\DB::beginTransaction();
 
         try {
-            // Read the CSV file
-            $csvData = array_map('str_getcsv', file($fullPath));
+            // Read the file using Excel package (supports CSV, XLSX, XLS)
+            $data = Excel::toArray([], $file);
+
+            // Get the first sheet
+            $csvData = $data[0] ?? [];
 
             // Remove empty rows
             $csvData = array_filter($csvData, function($row) {
                 return !empty(array_filter($row, function($cell) {
-                    return !empty(trim($cell));
+                    return !empty(trim($cell ?? ''));
                 }));
             });
 
@@ -174,8 +174,7 @@ class DepartmentController extends Controller
                 \Illuminate\Support\Facades\DB::rollBack();
             }
 
-            // Clean up the temporary file
-            \Illuminate\Support\Facades\Storage::delete($path);
+            // No temporary file to clean up
 
             // Prepare the response message
             $message = "Bulk upload completed: {$successCount} departments imported successfully";
@@ -201,8 +200,7 @@ class DepartmentController extends Controller
                     ->with('success', $message);
             }
         } catch (\Exception $e) {
-            // Clean up the temporary file
-            \Illuminate\Support\Facades\Storage::delete($path);
+            // No temporary file to clean up
 
             // Log the error
             Log::error('Error in bulk department upload', [
@@ -220,18 +218,10 @@ class DepartmentController extends Controller
     /**
      * Download the bulk department upload template.
      *
-     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
+     * @return \Symfony\Component\HttpFoundation\StreamedResponse
      */
     public function downloadTemplate()
     {
-        $templatePath = storage_path('app/templates/bulk_department_template.csv');
-        $templateDir = storage_path('app/templates');
-
-        // Create the directory if it doesn't exist
-        if (!file_exists($templateDir)) {
-            mkdir($templateDir, 0755, true);
-        }
-
         // Define the headers
         $headers = [
             'Code (Required)',
@@ -240,23 +230,37 @@ class DepartmentController extends Controller
             'Is Active (TRUE/FALSE - Optional)'
         ];
 
-        // Sample data
+        // Sample data - approximately 10 records
         $sampleData = [
             ['CSC', 'Computer Science', 'Department of Computer Science', 'TRUE'],
             ['BUS', 'Business Administration', 'Department of Business Administration', 'TRUE'],
-            ['MTH', 'Mathematics', 'Department of Mathematics', 'FALSE'],
+            ['MTH', 'Mathematics', 'Department of Mathematics', 'TRUE'],
+            ['PHY', 'Physics', 'Department of Physics', 'TRUE'],
+            ['CHE', 'Chemistry', 'Department of Chemistry', 'TRUE'],
+            ['BIO', 'Biology', 'Department of Biology', 'TRUE'],
+            ['ENG', 'English', 'Department of English Literature', 'TRUE'],
+            ['HIS', 'History', 'Department of History', 'FALSE'],
+            ['ECO', 'Economics', 'Department of Economics', 'TRUE'],
+            ['PSY', 'Psychology', 'Department of Psychology', 'TRUE'],
         ];
 
-        // Create the CSV content
-        $csvContent = implode(',', $headers) . "\n";
-        foreach ($sampleData as $row) {
-            $csvContent .= implode(',', $row) . "\n";
-        }
+        // Merge headers with sample data
+        $data = array_merge([$headers], $sampleData);
 
-        // Write the CSV file
-        file_put_contents($templatePath, $csvContent);
+        // Stream the Excel file directly to the browser (no disk write needed)
+        return Excel::download(new class($data) implements \Maatwebsite\Excel\Concerns\FromArray {
+            private $data;
 
-        return response()->download($templatePath, 'bulk_department_template.csv');
+            public function __construct($data)
+            {
+                $this->data = $data;
+            }
+
+            public function array(): array
+            {
+                return $this->data;
+            }
+        }, 'bulk_department_template.xlsx');
     }
 
     /**
